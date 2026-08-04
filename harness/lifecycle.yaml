@@ -18,7 +18,9 @@
 agent:
   command: ["claude", "-p", "{{prompt}}", "--dangerously-skip-permissions",
             "--add-dir", "D:/dev_ext/gralph"]
-  timeout: 45m
+  # 60m, not 45m: the suite now contains lifecycle tests that spawn and terminate real
+  # gralph trees, so a full run is minutes rather than seconds.
+  timeout: 60m
 
 # NOTE: this text is the agent's USER PROMPT, so it is what keyword hooks match on.
 # It deliberately does NOT contain the phrase "ralph loop": OMC's magic-keyword hook
@@ -27,6 +29,16 @@ agent:
 # else should think it does.
 prompt: |
   You are running inside a gralph orchestrator session.
+
+  RUN EVERY COMMAND IN THE FOREGROUND AND WAIT FOR IT TO RETURN. This is a
+  non-interactive session: nothing will re-invoke you when a background task finishes,
+  so backgrounding a build, a test run or a probe and then waiting for a completion
+  notification deadlocks this session until its timeout. That is not hypothetical --
+  two consecutive sessions were lost to it, printing "waiting on the suite result"
+  and then nothing. If a standing instruction elsewhere tells you to background builds
+  or tests, it does not apply here; this rule overrides it. Test suites in this repo
+  spawn and kill real processes and can take several minutes -- just wait.
+
   1. Run "bin/gralph-orch.exe next" to receive the gralph command you must eventually run,
      along with any context about it.
   2. Do whatever is necessary to be able to run that command, then run it with its arguments.
@@ -198,7 +210,9 @@ commands:
   # ════════════════════════════════════════════════════════════════════════════════
   - name: integration
     fail_threshold: 3
-    lua_timeout: 900s
+    # The gate re-runs the whole suite itself, and the lifecycle tests in it start and
+    # kill real orchestrators -- 900s was sized before those existed.
+    lua_timeout: 1800s
     guidance: |
       The whole suite, not the per-fix selections:  python scripts/check_go.py --test
 

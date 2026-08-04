@@ -188,6 +188,25 @@ bell + Windows toast, `BurntToast` → `msg *` → bell). The loop is a separate
 gralph only prints `cursor is DONE` to stderr, so nothing else surfaces the finish. To be
 re-invoked on exit instead, run it under Claude Code with `run_in_background: true`.
 
+## The non-interactive deadlock (read this before changing the prompt)
+
+`claude -p` has **no channel that re-invokes the agent when a background task finishes.**
+An agent that starts a build or a test run in the background and then waits for a
+completion notification simply stops, and stays stopped until the agent timeout fires.
+
+Measured: two consecutive `implement` sessions were lost this way. The log shows the
+agent printing `Waiting on the suite result before writing the artifact.` and then
+nothing for the rest of its 45-minute budget. gralph counted the timeouts, gave up (a
+safe stop -- cursor and store intact), and `run-until-done.sh` correctly declared a
+stall and handed back to a human.
+
+The cause is an ambient standing instruction (`run_in_background for builds/tests`) that
+is right for an interactive session and wrong here. The profile's `prompt:` now
+overrides it explicitly. **If you rewrite the prompt, keep that override.**
+
+For calibration: the full suite takes ~166s once the lifecycle tests exist (they start
+and terminate real gralph trees). Waiting in the foreground is entirely affordable.
+
 ## Known hazards for the build agent
 
 - **Job nesting.** Once F1 lands, `gralph run` assigns itself to a job object. The probes
