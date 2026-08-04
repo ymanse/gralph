@@ -188,6 +188,39 @@ bell + Windows toast, `BurntToast` → `msg *` → bell). The loop is a separate
 gralph only prints `cursor is DONE` to stderr, so nothing else surfaces the finish. To be
 re-invoked on exit instead, run it under Claude Code with `run_in_background: true`.
 
+## Launching the loop so it actually survives
+
+Use **`run-scheduled.cmd`**. Not `run-until-done.sh` directly, and not
+`run-detached.cmd` from a Claude Code Bash tool.
+
+Measured on this machine: launching via `cmd /c start "" /min run-detached.cmd` from a
+Claude Code Bash call does **not** detach the loop. Twice the entire tree -- outer bash,
+orchestrator and agent -- vanished at once with no message anywhere: once ~35 minutes
+in, once ~6 minutes in while the agent was actively writing `stop.go`. Neither was a
+deadlock or a timeout, and the outer loop never reached its own post-run log line, so it
+was killed rather than having exited. `start` gives the child a new console but does not
+break it out of a job object.
+
+Three hypotheses were checked and ruled out by evidence before settling on this:
+the agent's tests kill only PIDs they started (verified in their source); the job-object
+handle in `lifecycle_windows.go` is a package-level var and is never closed early; and
+no test sends a console control event. The exact reaper is still unidentified -- what is
+established is that the Task Scheduler launch path does not suffer it.
+
+After launching, **verify the ancestry**:
+
+```
+gralph-orch.exe <- bash <- bash <- bash <- cmd.exe <- svchost.exe <- services.exe
+```
+
+`svchost.exe <- services.exe` is the Task Scheduler service. If `claude.exe` or a Claude
+Code shell appears in that chain instead, you are back in the configuration that dies.
+
+`run-scheduled.cmd` disables the task's trigger right after starting it. That is not
+tidiness: `/SC ONCE` leaves a live trigger that would later start a **second**
+orchestrator on the same instance -- precisely the concurrent-state corruption this
+harness exists to remove.
+
 ## The non-interactive deadlock (read this before changing the prompt)
 
 `claude -p` has **no channel that re-invokes the agent when a background task finishes.**
