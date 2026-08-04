@@ -36,6 +36,13 @@ LIMIT_RE="hit your [a-z0-9-]+ limit|usage limit reached|rate limit exceeded|Clau
 mkdir -p "$DIR"
 cursor() { python -c "import json;print(json.load(open('$DIR/state.json'))['cursor'])" 2>/dev/null || echo "?"; }
 
+# The loop's OWN bookkeeping must reach the log file, not just stdout. A detached run
+# has no console anyone reads, so without this the round transitions, the stall count,
+# the usage-limit sleeps and the final verdict are simply lost -- measured: a `gralph
+# run` exited silently mid-build and the log showed only the next round starting, with
+# no way to tell a kill from a give-up.
+say() { printf '%s\n' "$*" | tee -a "$LOG"; }
+
 # Completion alarm -- the loop and any interactive session are separate processes, so
 # nothing surfaces DONE/STUCK on its own. Bell + Windows toast (BurntToast -> msg * -> bell).
 notify() { printf '\a'; powershell -NoProfile -Command "New-BurntToastNotification -Text '$1','$2'" >/dev/null 2>&1 || msg '*' "$1: $2" >/dev/null 2>&1 || true; }
@@ -47,8 +54,11 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
   before="$(cursor)"
   rlog="$(mktemp)"
   "$GRALPH" run "$PROFILE" --max-iterations "$ITERS" 2>&1 | tee -a "$LOG" | tee "$rlog"
+  rc="${PIPESTATUS[0]}"
   after="$(cursor)"
-  echo "[loop] round $round: cursor $before -> $after"
+  # The exit code is the difference between "gave up" (1), "stopped/done" (0) and
+  # "was killed" (anything else, printed with no message of its own).
+  say "[loop] round $round: cursor $before -> $after (gralph exit=$rc)"
 
   if [ "$after" = DONE ]; then echo "[loop] cursor=DONE"; rm -f "$rlog"; notify "gralph lifecycle DONE" "flow complete after $round round(s)"; exit 0; fi
 
