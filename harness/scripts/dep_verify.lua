@@ -4,6 +4,32 @@
 -- it. Both are recomputed here.
 local L = dofile(gralph.profile_dir .. "/scripts/lib.lua")
 
+-- 0. The suite, AGAIN. `integration` ran it three stages ago, and the agent edits Go
+--    code at zombie-proof and shutdown-proof to make those probes pass. Nothing
+--    between there and here re-runs the tests, so without this a fix made to satisfy
+--    a probe could leave the suite red and still reach DONE. A terminal gate must
+--    re-establish everything it is about to declare finished.
+local t = io.popen("python scripts/check_go.py --test")
+local ts = t:read("*a"); t:close()
+local tran  = L.num(ts, "gotest_ran=(%d+)")
+local tpass = L.num(ts, "gotest_pass=(%d+)")
+local tfail = L.num(ts, "gotest_fail=(%d+)")
+if tran == nil or tpass == nil or tfail == nil then
+  gralph.fail("check_go.py printed no test counts — run `python scripts/check_go.py --test` and report its output")
+  return
+end
+if tran == 0 then gralph.fail("`go test ./...` produced no test events — the package does not build"); return end
+if tfail ~= 0 then
+  gralph.fail(tfail .. " test(s) failing at the terminal gate. Code changed after `integration` (probably to satisfy a probe) and broke the suite — fix it; DONE must not ship a red suite")
+  return
+end
+if tpass == 0 then gralph.fail("0 passing tests — a hollow green"); return end
+local basep = tonumber(gralph.store.get("base_pass")) or 0
+if basep > 0 and tpass < basep then
+  gralph.fail("the suite passes " .. tpass .. " tests but the pre-change baseline passed " .. basep .. " — tests were lost between integration and here")
+  return
+end
+
 -- 1. POSIX parity. A windows-tagged file with no counterpart breaks `go build` on
 --    linux/darwin, which this machine would never notice on its own.
 local c = io.popen("python scripts/check_go.py --cross")

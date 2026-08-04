@@ -219,8 +219,9 @@ commands:
       agent that owns real children and terminates them by all four paths in
       spec/shutdown-contract.md.
 
-      Make sure bin/gralph-uut.exe is the binary you just built:
-        python scripts/check_go.py --build bin/gralph-uut.exe
+      The gate BUILDS bin/gralph-uut.exe from the current source itself before probing,
+      so the result always reflects the tree that will ship -- you cannot be credited
+      for a good binary sitting next to bad source. Make sure the source compiles.
 
       You can run the probe yourself to see where you stand (it takes several minutes):
         python scripts/proof_zombie.py --uut bin/gralph-uut.exe \
@@ -251,6 +252,8 @@ commands:
                   state.json byte-identical; a dead holder's lock is reaped
         blocked   `gralph block <reason>` exits 3 and does NOT respawn the stage
 
+      As with zombie-proof, the gate rebuilds bin/gralph-uut.exe from source first.
+
       Run it yourself first if you want to iterate:
         python scripts/proof_shutdown.py --uut bin/gralph-uut.exe \
             --out artifacts/shutdown_proof.json
@@ -263,8 +266,12 @@ commands:
     fail_threshold: 2
     lua_timeout: 1800s
     guidance: |
-      Ship-readiness. Two things Windows-only green cannot tell you:
+      Ship-readiness. The terminal gate re-establishes everything it is about to call
+      finished -- including the full suite, which nothing has re-run since
+      `integration` three stages ago. If you changed Go code to satisfy a probe, this
+      is where a broken unit test surfaces.
 
+        python scripts/check_go.py --test           # full suite, again
         python scripts/check_go.py --cross          # linux + darwin still build
         python scripts/scan_deps.py --baseline upstream/main
 

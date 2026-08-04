@@ -1,14 +1,14 @@
 {
   "algo": "sha256",
   "files": {
-    "lifecycle.yaml": "f7b97b6a20c4989b89fce07e43649cd32a2b0765a7502445dffb66324b87d8d5",
+    "lifecycle.yaml": "838aa18251e35b9e02bf30e968bdf0c34526cbde58e48d033e444e463714d9e9",
     "probe-block.yaml": "b386f974fd5a94c68427066ebd51d9c4586451b9c9c8383813a3319e33333954",
     "probe-complete.yaml": "cd9d95047606dc1ac5587a09c3371dd86052bc067fe820c887b626169f0c27d2",
     "probe-hang.yaml": "c14b8fb61018a0d54e810a64412327bd6042327e92dfc306d09665c28ee15c4e",
     "probe-timeout.yaml": "050915ab8109d51079c0f81969915c038e0a862ff8fbe24db2890551f636e227",
     "scripts/check_go.py": "ec828838abb0a6b589cd2a064d99ac0150e8562823f403ebc1da21ee9637a5e3",
     "scripts/decompose.lua": "736d7a562e3b8355baebc4abccc6ad92c4b0ffc16f70081a42164513069d3643",
-    "scripts/dep_verify.lua": "7937ea57ff4016c0a27d0665adbecc00bc5cea5d8ca4f0d07a5418ccb68cd987",
+    "scripts/dep_verify.lua": "58f7a6722d2b87c4d903e3904dcf24d123abcdc6c440128250a7c5dd9f73d8a4",
     "scripts/fake_agent.py": "c19be32d143bb47b1b3d2dc4488c8e2635763a9947542735ed8aa75d5b5f1020",
     "scripts/implement.lua": "d0644f2c5e5bb2e00094fc3cb72afc2ea32d193ccfca56a5e03b5d49f4e933ac",
     "scripts/integration.lua": "2e98971c5b016df86387bba195c371938bd07b910b7517afcf05fcb367759f73",
@@ -21,9 +21,9 @@
     "scripts/proof_zombie.py": "8eb6774993df28d23058d86e75a0b0753bd3f46c90e23a96cc2dd5d1bb1472d5",
     "scripts/scan_lifecycle.py": "6ada0dfb2849b2da1ca6417a045f2a903f60ce6dd58f790f2c509ada9cc81e56",
     "scripts/sha256_of.py": "ac0d52fb1a945e7d60368d8d3f3d5b2878c7c1f815d941988d1cdfd3dfa063e5",
-    "scripts/shutdown_proof.lua": "2861b32fdbcb4e336a68de3336b608482b5c36590e34ce3ae1597f861fc16f35",
+    "scripts/shutdown_proof.lua": "c8f335cee90f95ed30210d3d65583744d02e66228bcb7b18bef470e6a9d1c6ad",
     "scripts/write_tests.lua": "a431970962f6faa0054bf68903c0512dba7c3393fbaa9ab034c794a68cfafb55",
-    "scripts/zombie_proof.lua": "57c9b9bcb81037805e47c0d11cefdfdfe44a660f37424e5175593b0a1c155c2f",
+    "scripts/zombie_proof.lua": "3a9f759facc2c1a035de9fb487f1df61864045dc014192a382fe27c9d1d5a83c",
     "spec/shutdown-contract.md": "b9f67d7826b1f5a1a71575c331b751a572537c611e9c10d152a73a3ae9557d31"
   }
 }

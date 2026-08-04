@@ -22,6 +22,19 @@ if mism ~= 0 or miss ~= 0 then
   return
 end
 
+-- Rebuild the UUT from source IN-GATE. The probe measures a binary, not a source
+-- tree: an agent that built a good binary and then edited the source badly would be
+-- credited for code no one ever proved. Building here makes binary and source the
+-- same claim. (bin/gralph-orch.exe -- the running orchestrator and the control -- is
+-- never touched.)
+local b = io.popen("python scripts/check_go.py --build bin/gralph-uut.exe")
+local bs = b:read("*a"); b:close()
+local built = L.num(bs, "build_ok=(%d+)")
+if built ~= 1 then
+  gralph.fail("could not build bin/gralph-uut.exe from the current source — the probe would otherwise measure a stale binary. Fix the build first")
+  return
+end
+
 -- run the probe (several minutes: it starts and kills real orchestrators)
 local p = io.popen("python scripts/proof_zombie.py --uut bin/gralph-uut.exe --control bin/gralph-orch.exe --out artifacts/zombie_proof.json")
 local s = p:read("*a"); p:close()

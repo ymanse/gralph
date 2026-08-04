@@ -51,6 +51,37 @@ Two independent reasons, both load-bearing:
 Stages 7 and 8 generate their own evidence. There is no agent-authored input to them at
 all — the agent's only influence is the Go code it wrote.
 
+## What each gate actually EXECUTES
+
+A gate guarantees only what it runs. Keeping this table honest is the difference between
+a gate and a rubber stamp, so it is enumerated rather than assumed.
+
+| stage | commands run inside the gate | runs the test suite? |
+|---|---|---|
+| `preflight` | `probe_manifest.py`, `check_go.py --test --fmt --vet` | ✅ full |
+| `decompose` | *(nothing)* — planning stage; there is no code to verify yet | ❌ |
+| `write-tests` | `check_go.py --run <pattern>`, `sha256_of.py` | ✅ the fix's tests, **failure required** |
+| `implement` | `sha256_of.py`, `check_go.py --run <pattern>`, `scan_lifecycle.py` | ✅ the fix's tests, **pass required** |
+| `lint` | `check_go.py --fmt --vet`, `scan_lifecycle.py` | ❌ — `integration` runs immediately after |
+| `integration` | `check_go.py --test`, `probe_manifest.py` | ✅ full + count-bound to the preflight baseline |
+| `zombie-proof` | `probe_manifest.py`, `check_go.py --build`, `proof_zombie.py` | live process-tree proof |
+| `shutdown-proof` | `probe_manifest.py`, `check_go.py --build`, `proof_shutdown.py` | live contract proof |
+| `dep-verify` | `check_go.py --test`, `--cross`, `scan_deps.py` | ✅ full + count-bound |
+
+**Two holes this table exposed, both closed** (found by auditing the harness mid-run, not
+by a gate failing):
+
+- **Nothing re-ran the suite after `integration`.** The agent edits Go code at
+  `zombie-proof` and `shutdown-proof` to make those probes pass; if that broke a unit
+  test, `dep-verify` only checked cross-builds and dependencies, so **DONE was reachable
+  with a red suite**. `dep-verify` now re-runs the full suite, count-bound to the same
+  baseline. A terminal gate must re-establish everything it declares finished.
+- **The probes measured a binary, not the source.** An agent that built a good
+  `gralph-uut.exe` and then edited the source badly would still pass, shipping code
+  nothing ever proved. `zombie-proof` and `shutdown-proof` now build the UUT from source
+  **inside the gate**, so binary and source are one claim. (`bin/gralph-orch.exe` — the
+  running orchestrator and the control — is still never rebuilt.)
+
 ## Why the probes are hash-pinned
 
 The gates judge the agent; the probes are the gates' instruments. An agent that could

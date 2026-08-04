@@ -13,6 +13,16 @@ if mism ~= 0 or miss ~= 0 then
   return
 end
 
+-- Same reasoning as zombie-proof: build the UUT here so the contract is measured on
+-- the source tree that will actually ship, not on whatever binary happens to be lying
+-- in bin/.
+local b = io.popen("python scripts/check_go.py --build bin/gralph-uut.exe")
+local bs = b:read("*a"); b:close()
+if L.num(bs, "build_ok=(%d+)") ~= 1 then
+  gralph.fail("could not build bin/gralph-uut.exe from the current source — fix the build first")
+  return
+end
+
 local p = io.popen("python scripts/proof_shutdown.py --uut bin/gralph-uut.exe --out artifacts/shutdown_proof.json")
 local s = p:read("*a"); p:close()
 if not s:find("graceful_exit=", 1, true) then
