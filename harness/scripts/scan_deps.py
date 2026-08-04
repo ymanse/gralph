@@ -10,28 +10,41 @@ Prints:
   baseline_found=1 deps_added=N deps_removed=N disallowed=N
 """
 import argparse
+import json
 import os
-import re
 import subprocess
 import sys
+import tempfile
 
 HARNESS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(HARNESS)
 
 ALLOWED_NEW = {"golang.org/x/sys"}
-REQ = re.compile(r"^\s*([\w./\-]+)\s+v[\w.\-+]+", re.M)
 
 
 def parse_requires(text):
-    """Module paths inside require blocks/lines, ignoring the module/go directives."""
-    out = set()
-    for m in REQ.finditer(text):
-        p = m.group(1)
-        if p in ("module", "go", "toolchain", "require", "replace", "exclude"):
-            continue
-        if "." in p.split("/")[0]:          # a module path always has a dotted host
-            out.add(p)
-    return out
+    """Module paths required by a go.mod, via `go mod edit -json`.
+
+    Deliberately NOT a regex. go.mod has several equivalent spellings -- a
+    parenthesized require block and a single-line `require X v1 // indirect` -- and a
+    line-anchored regex silently misses the single-line form. Measured: promoting
+    golang.org/x/sys from indirect to direct reformatted the block, and the regex then
+    reported the untouched gofrs/flock as REMOVED, which would have failed dep-verify
+    with a false accusation.
+
+    Indirect-ness is ignored on purpose: a module moving between the direct and
+    indirect blocks is not a dependency change, it is `go mod tidy` bookkeeping.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "go.mod")
+        with open(p, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        r = subprocess.run(["go", "mod", "edit", "-json", p],
+                           capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            raise ValueError(f"go mod edit -json failed: {r.stderr.strip()[:200]}")
+        data = json.loads(r.stdout)
+    return {req["Path"] for req in (data.get("Require") or [])}
 
 
 def baseline_gomod(ref):
@@ -60,7 +73,13 @@ def main() -> int:
         print(f"cannot read {a.baseline}:go.mod -- `git fetch upstream`", file=sys.stderr)
         return 2
 
-    base, now = parse_requires(base_text), parse_requires(cur)
+    try:
+        base, now = parse_requires(base_text), parse_requires(cur)
+    except (ValueError, OSError, subprocess.SubprocessError) as e:
+        # Fail closed: an unparseable go.mod is "unknown", never "unchanged".
+        print("baseline_found=0 deps_added=0 deps_removed=0 disallowed=0")
+        print(f"cannot parse go.mod: {e}", file=sys.stderr)
+        return 2
     added, removed = sorted(now - base), sorted(base - now)
     disallowed = [d for d in added
                   if not any(d == x or d.startswith(x + "/") for x in ALLOWED_NEW)]

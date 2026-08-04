@@ -49,9 +49,16 @@ def main() -> int:
 
     files = go_files()
     legacy_sites, killtree_files, jobobj_files, cancel_files = [], [], [], []
+    legacy_in_tests = []
     win_tagged, other_tagged = [], []
 
     for name in files:
+        # Production files only for the verdict counts. A _test.go file legitimately
+        # NAMES the old pattern -- to document the defect it asserts against, or as a
+        # fixture -- and counting that would make the lint gate satisfiable only by
+        # deleting the agent's own explanatory comment. Measured: the F2 RED test's
+        # header comment quotes `Process.Signal(syscall.SIGTERM)` verbatim.
+        is_test = name.endswith("_test.go")
         path = os.path.join(REPO, name)
         try:
             src = open(path, encoding="utf-8", errors="replace").read()
@@ -66,7 +73,11 @@ def main() -> int:
             other_tagged.append(name)
 
         if LEGACY.search(src):
-            legacy_sites.append(name)
+            (legacy_in_tests if is_test else legacy_sites).append(name)
+        if is_test:
+            # Tests may reference the new helpers freely; they must not be able to
+            # satisfy "the fix exists" on their own.
+            continue
         if KILLTREE.search(src):
             killtree_files.append(name)
         if JOBOBJ.search(src):
@@ -82,6 +93,10 @@ def main() -> int:
         "files_scanned": len(files),
         "legacy_cancel_sites": len(legacy_sites),
         "legacy_cancel_files": legacy_sites,
+        # informational: not a verdict, but visible so a reviewer can see the pattern
+        # still appears somewhere and check it is only prose.
+        "legacy_in_tests": len(legacy_in_tests),
+        "legacy_in_test_files": legacy_in_tests,
         "cancel_sites": len(cancel_files),
         # int form so a Lua gate can bind to it (the key=value line carries ints only)
         "unfixed_cancel_sites_n": len(unfixed_sites),
