@@ -83,6 +83,9 @@ func TestSessionInstanceResolution(t *testing.T) {
 	})
 
 	t.Run("default is filename stem", func(t *testing.T) {
+		// ponytail: the harness itself runs under $GRALPH_INSTANCE_NAME, so an
+		// ambient value would silently decide this subtest. Clear it explicitly.
+		t.Setenv("GRALPH_INSTANCE_NAME", "")
 		p, _, err := profileFromSessionArgs(nil)
 		if err != nil {
 			t.Fatal(err)
