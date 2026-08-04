@@ -1,0 +1,281 @@
+# gralph lifecycle harness -- eliminate Windows process-tree leaks and define the
+# shutdown channel, in the ymanse/gralph fork (branch feature/windows-lifecycle).
+#
+# Graph:
+#   preflight -> decompose
+#     -> write-tests -(fixes remain)-> self -(all 5 RED)-> implement
+#     -> implement   -(fixes remain)-> self -(all 5 GREEN)-> lint
+#     -> integration -> zombie-proof -> shutdown-proof -> dep-verify -> DONE
+#
+# The orchestrator running this profile is bin/gralph-orch.exe -- the PINNED PRE-FIX
+# binary. That is deliberate and load-bearing:
+#   * Windows locks a running .exe, so the loop cannot rebuild the binary it is
+#     executing from; the agent builds bin/gralph-uut.exe instead,
+#   * the same pinned binary is the probe's positive control, so the proofs keep a
+#     known-leaking reference to compare against.
+# NEVER point this profile at the binary being fixed.
+
+agent:
+  command: ["claude", "-p", "{{prompt}}", "--dangerously-skip-permissions",
+            "--add-dir", "D:/dev_ext/gralph"]
+  timeout: 45m
+
+prompt: |
+  You are running inside a gralph (ralph loop) session.
+  1. Run "bin/gralph-orch.exe next" to receive the gralph command you must eventually run,
+     along with any context about it.
+  2. Do whatever is necessary to be able to run that command, then run it with its arguments.
+  3. When a gralph command's response tells you to end the session, end the session immediately.
+
+fail_threshold: 3
+lua_timeout: 300s
+
+commands:
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: preflight
+    fail_threshold: 2
+    lua_timeout: 900s
+    guidance: |
+      [gralph lifecycle harness] Repo D:/dev_ext/gralph, fork ymanse/gralph, branch
+      feature/windows-lifecycle. CWD is the harness dir; the Go sources are its parent.
+
+      Read spec/defect-analysis.md and spec/shutdown-contract.md first. They are the
+      authoritative problem statement and the authoritative design; do not re-derive
+      either, and do not widen the scope beyond the five fixes in PRD.md.
+
+      HARNESS-OWNED files you must NOT edit (they are the referees that judge your
+      work, and every gate re-hashes them): scripts/proof_*.py, scripts/proc.py,
+      scripts/fake_agent.py, scripts/probe_manifest.py, scripts/check_go.py,
+      scripts/scan_lifecycle.py, scripts/sha256_of.py, probe-*.yaml,
+      spec/shutdown-contract.md. If one seems wrong, STOP and say so -- do not "fix" it.
+
+      Establish the starting line:
+        python scripts/probe_manifest.py                     -> mismatched=0 missing=0
+        python scripts/check_go.py --test --fmt --vet        -> green, no unformatted
+        python scripts/check_go.py --build bin/gralph-uut.exe
+      Do NOT rebuild bin/gralph-orch.exe. It is the running orchestrator (Windows will
+      refuse) and the probes' pre-fix control.
+
+      Write artifacts/preflight.json:
+        {"toolchain":"go","baseline_green":true,"gotest_pass":N,"gofmt_unformatted":0,
+         "vet_issues":0,"uut_build_ok":true,"probes_unmodified":true}
+      RUN: bin/gralph-orch.exe do preflight
+    lua: scripts/preflight.lua
+    next: [decompose]
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: decompose
+    fail_threshold: 2
+    guidance: |
+      The five fixes are fixed by spec -- you are not choosing them, you are planning
+      them. Read PRD.md, then for each id record how it will be PROVEN.
+
+      ids (exact): F1-jobobject, F2-treekill, F3-graceful-stop, F4-run-lock, F5-block-verb
+
+      For each, emit: "id", "acceptance" (the observable it must produce, quoted from
+      the spec), "test_pattern" (the `go test -run` regex that will select its tests --
+      pick names now and use them consistently), and "files" (the Go files you expect
+      to add or touch).
+
+      Write artifacts/fixes.json: {"count":5,"fixes":[{...},...]}
+      RUN: bin/gralph-orch.exe do decompose
+    lua: scripts/decompose.lua
+    next: [write-tests]
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: write-tests
+    fail_threshold: 3
+    lua_timeout: 900s
+    guidance: |
+      RED phase, ONE fix per session. Pick a fix from artifacts/fixes.json that has no
+      artifacts/tests_red/<id>.json yet.
+
+      Write Go tests that fail because the behaviour is MISSING -- not because they
+      assert on a stub you also wrote. At least one test per fix must cover the
+      failure direction (e.g. a lock whose holder is ALIVE must not be reaped;
+      graceful stop must NOT kill a mid-turn agent).
+
+      The gate re-runs `go test -run <your pattern>` and requires a real failure, so a
+      pattern that selects nothing is rejected -- `go test` prints "ok [no tests to
+      run]" for an empty selection and that is not a RED.
+
+      Hash the test files with the harness's own method (do not hand-write a digest):
+        python scripts/sha256_of.py <file1> <file2>      # repo-root relative paths
+
+      Write artifacts/tests_red/<id>.json:
+        {"errors":0,"collected":N,"passed":0,"failed":N,"negative_paths":N,
+         "test_pattern":"TestLifecycleJobObject","test_files":"lifecycle_windows_test.go",
+         "tests_hash":"<the digest the command printed>"}
+      RUN: bin/gralph-orch.exe do write-tests --fix <id>
+    args:
+      - name: fix
+        required: true
+        desc: fix id from artifacts/fixes.json
+    lua: scripts/write_tests.lua
+    next: [write-tests, implement]
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: implement
+    fail_threshold: 3
+    lua_timeout: 900s
+    guidance: |
+      GREEN phase, ONE fix per session. Implement the product code until that fix's
+      RED tests pass. The RED test files must stay byte-identical -- the gate
+      recomputes their sha256 from disk against the hash recorded at RED time.
+
+      Design notes carried from spec/ (follow them; they were measured, not guessed):
+        F1-jobobject   Create a job object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE and
+                       assign the CURRENT process at `run` startup. Descendants inherit
+                       the job, so launcher + agent + MCP children are all covered by
+                       one assignment, and a TerminateProcess on gralph -- which runs no
+                       Go code -- still reaps the tree. Nested jobs are fine on Win8+;
+                       do not request CREATE_BREAKAWAY_FROM_JOB. Failure to assign must
+                       be logged and non-fatal (fail open: never make `run` unusable).
+        F2-treekill    Replace BOTH cmd.Cancel bodies (launcher.go and
+                       galp_subprocess.go). Measured: Process.Signal(syscall.SIGTERM)
+                       ALWAYS returns "not supported by windows", so the Kill() fallback
+                       is the only path taken and it spares every grandchild. Windows
+                       needs a tree kill; POSIX must keep its current process-group
+                       behaviour (do not regress it).
+        F3-graceful-stop  `gralph stop <profile> [--name] [--now]`, a stop file in the
+                       state dir, and a SIGINT counter: 1st = graceful, 2nd = immediate.
+                       Graceful is checked at the TOP of the iteration, after
+                       resolveNext and before the launcher is exec'd -- the one point
+                       where stopping loses nothing. Exit 0.
+        F4-run-lock    An exclusive run-level lock in the state dir holding the
+                       orchestrator PID. A second `gralph run` on a live instance exits
+                       non-zero naming the holder's PID and touches nothing. A lock
+                       whose holder PID is dead is reaped (dead holder, not age).
+                       withStateLock stays as it is -- it guards commits, not runs.
+        F5-block-verb  `gralph block "<reason>"` records a terminal blocked state; the
+                       loop exits 3 instead of respawning. Distinct from a gate failure.
+
+      Re-run the whole suite before reporting -- a fix that breaks a sibling is caught
+      at `integration` anyway, and finding it here is cheaper.
+
+      Write artifacts/impl/<id>.json:
+        {"failed":0,"skipped":0,"passed":N,"tests_baseline":"red","tests_unmodified":true,
+         "test_files":"<same list as RED>","tests_hash":"<recomputed>",
+         "tests_hash_red":"<the RED digest>","scan_source":"scan_lifecycle",
+         "legacy_cancel_sites":N,"killtree_refs":N,"jobobject_refs":N}
+      RUN: bin/gralph-orch.exe do implement --fix <id>
+    args:
+      - name: fix
+        required: true
+        desc: fix id from artifacts/fixes.json
+    lua: scripts/implement.lua
+    next: [implement, lint]
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: lint
+    fail_threshold: 2
+    lua_timeout: 600s
+    guidance: |
+      Formatting, vet, and the structural shape of the fix.
+
+        gofmt -w .                                   # repo root; the repo is LF
+        python scripts/check_go.py --fmt --vet
+        python scripts/scan_lifecycle.py
+
+      The scanner enforces what a passing test cannot: zero remaining
+      Signal(syscall.SIGTERM)+Kill fallbacks, BOTH cmd.Cancel sites routed through the
+      tree-killer, a job object present, and a !windows counterpart for every new
+      windows-tagged file.
+
+      Write artifacts/lint.json with the scanner's own counts:
+        {"gofmt_unformatted":0,"vet_issues":0,"scan_source":"scan_lifecycle",
+         "legacy_cancel_sites":0,"unfixed_cancel_sites":0,"killtree_refs":N,
+         "jobobject_refs":N}
+      RUN: bin/gralph-orch.exe do lint
+    lua: scripts/lint.lua
+    next: [integration]
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: integration
+    fail_threshold: 3
+    lua_timeout: 900s
+    guidance: |
+      The whole suite, not the per-fix selections:  python scripts/check_go.py --test
+
+      The gate compares the passing count against the baseline recorded at preflight,
+      so removing an inherited test to reach green is rejected. Rebuild the UUT binary
+      afterwards so the runtime proofs test what you just built:
+        python scripts/check_go.py --build bin/gralph-uut.exe
+
+      Write artifacts/integration.json:
+        {"gotest_ran":1,"gotest_pass":N,"gotest_fail":0,"baseline_pass":N,
+         "assertions_preserved":true,"probes_unmodified":true}
+      RUN: bin/gralph-orch.exe do integration
+    lua: scripts/integration.lua
+    next: [zombie-proof]
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: zombie-proof
+    fail_threshold: 3
+    lua_timeout: 1800s
+    guidance: |
+      The decisive gate. You do not produce its evidence -- the gate runs
+      scripts/proof_zombie.py itself, which launches real orchestrators against an
+      agent that owns real children and terminates them by all four paths in
+      spec/shutdown-contract.md.
+
+      Make sure bin/gralph-uut.exe is the binary you just built:
+        python scripts/check_go.py --build bin/gralph-uut.exe
+
+      You can run the probe yourself to see where you stand (it takes several minutes):
+        python scripts/proof_zombie.py --uut bin/gralph-uut.exe \
+            --control bin/gralph-orch.exe --out artifacts/zombie_proof.json
+
+      Reading the result: survivors under `terminate_gralph` mean the job object is
+      missing or not KILL_ON_JOB_CLOSE; survivors under `agent_timeout` mean the
+      launcher-side cancel still kills only the direct child; a `graceful_stop` marked
+      unsupported means F3 is not implemented yet.
+
+      The pre-fix control must still LEAK -- if it stops leaking, the probe broke and
+      your result means nothing. Do not "fix" the probe.
+      RUN: bin/gralph-orch.exe do zombie-proof
+    lua: scripts/zombie_proof.lua
+    next: [shutdown-proof]
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: shutdown-proof
+    fail_threshold: 3
+    lua_timeout: 1800s
+    guidance: |
+      zombie-proof showed nothing SURVIVES. This shows nothing is LOST. The gate runs
+      scripts/proof_shutdown.py, which measures three things on live runs:
+
+        graceful  stop requested mid-turn -> that turn finishes, its gate commits, the
+                  cursor reaches step-two, the next stage never starts, exit 0
+        lock      a second `gralph run` is refused, names the holder PID, leaves
+                  state.json byte-identical; a dead holder's lock is reaped
+        blocked   `gralph block <reason>` exits 3 and does NOT respawn the stage
+
+      Run it yourself first if you want to iterate:
+        python scripts/proof_shutdown.py --uut bin/gralph-uut.exe \
+            --out artifacts/shutdown_proof.json
+      RUN: bin/gralph-orch.exe do shutdown-proof
+    lua: scripts/shutdown_proof.lua
+    next: [dep-verify]
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  - name: dep-verify
+    fail_threshold: 2
+    lua_timeout: 1800s
+    guidance: |
+      Ship-readiness. Two things Windows-only green cannot tell you:
+
+        python scripts/check_go.py --cross          # linux + darwin still build
+        python scripts/scan_deps.py --baseline upstream/main
+
+      A windows-tagged file needs a !windows counterpart that KEEPS the POSIX
+      behaviour (process-group signalling), not a stub that silently drops it. New
+      dependencies are limited to golang.org/x/sys; the job object is also reachable
+      from the stdlib via syscall.NewLazyDLL on kernel32.
+
+      Write artifacts/dep_report.json:
+        {"graph_source":"on-disk-static","staleness_impossible":true,"files_scanned":N,
+         "cross_builds_ok":2,"deps_added":N,"disallowed":0,
+         "upstream_baseline":"upstream/main"}
+      RUN: bin/gralph-orch.exe do dep-verify
+    lua: scripts/dep_verify.lua

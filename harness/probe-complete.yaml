@@ -1,0 +1,34 @@
+# Probe profile: a well-behaved agent turn that finishes on its own AND advances the
+# cursor (it runs `gralph do step-one` before exiting). Used by proof_shutdown.py for
+# the graceful-stop proof: the stop is requested WHILE step-one is in flight, and the
+# contract requires that turn to complete, its gate to commit, and the cursor to reach
+# step-two -- with step-two never being started.
+# HARNESS-OWNED: hashed in probe_manifest.json.
+
+agent:
+  command: ["python", "scripts/fake_agent.py", "--mode", "complete",
+            "--pidfile", "artifacts/probe/agent_pids.json",
+            "--sentinel", "artifacts/probe/agent_done.json",
+            "--advance", "step-one",
+            "--gralph", "bin/gralph-uut.exe",
+            "--lifetime", "8", "--children", "2", "{{prompt}}"]
+  timeout: 300s
+
+prompt: |
+  probe session -- the fake agent ignores this.
+
+fail_threshold: 99
+lua_timeout: 30s
+
+commands:
+  - name: step-one
+    guidance: |
+      Probe stage one. RUN: gralph do step-one
+    lua: scripts/probe_pass.lua
+    next: [step-two]
+
+  - name: step-two
+    guidance: |
+      Probe stage two. Reaching this node means graceful stop failed to stop.
+      RUN: gralph do step-two
+    lua: scripts/probe_pass.lua

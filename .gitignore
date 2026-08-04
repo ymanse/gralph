@@ -7,3 +7,18 @@ example/gralph
 # 실행 산출물: 상태 디렉터리와 예제 리포트는 커밋하지 않는다.
 .gralph/
 example/report.txt
+
+# lifecycle harness: binaries and per-run evidence are regenerated, not committed.
+# The pre-fix control baseline IS committed -- it is the reference every proof run is
+# compared against, and regenerating it requires the pre-fix binary.
+# NOTE: the pattern excludes artifacts' CONTENTS, not the directory itself. git cannot
+# re-include a file whose parent directory is excluded, so `harness/artifacts/` here
+# would make the !baseline negation below silently dead.
+harness/bin/
+harness/artifacts/*
+!harness/artifacts/baseline/
+
+# 도구 부산물: OMC 세션 상태와 파이썬 캐시는 저장소에 들어가지 않는다.
+.omc/
+__pycache__/
+*.pyc

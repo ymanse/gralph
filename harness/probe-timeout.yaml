@@ -1,0 +1,23 @@
+# Probe profile: identical to probe-hang.yaml except for a short agent timeout, so the
+# LAUNCHER-side cancellation path fires (GALP_TIMEOUT_MS -> cmd.Cancel in the launcher)
+# while gralph itself keeps running. This is the highest-frequency leak in production:
+# a 75m agent timeout on a long harness run.
+# HARNESS-OWNED: hashed in probe_manifest.json.
+
+agent:
+  command: ["python", "scripts/fake_agent.py", "--mode", "hang",
+            "--pidfile", "artifacts/probe/agent_pids.json",
+            "--children", "2", "{{prompt}}"]
+  timeout: 8s
+
+prompt: |
+  probe session -- the fake agent ignores this.
+
+fail_threshold: 99
+lua_timeout: 30s
+
+commands:
+  - name: spin
+    guidance: |
+      Probe stage. The agent is expected to be killed by the launcher timeout.
+    lua: scripts/probe_pass.lua

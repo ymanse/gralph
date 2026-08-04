@@ -1,0 +1,28 @@
+# Probe profile for the BLOCKED verb (F5). The fake agent runs `gralph block "<reason>"`
+# instead of `gralph do`, which must terminate the loop with the blocked exit code
+# INSTEAD of respawning the same command. Pre-fix there is no `block` verb at all, so
+# the loop spins the same stage until its iteration budget runs out -- the recorded
+# failure mode that held one cursor for 10+ sessions.
+# HARNESS-OWNED: hashed in probe_manifest.json.
+
+agent:
+  command: ["python", "scripts/fake_agent.py", "--mode", "complete",
+            "--pidfile", "artifacts/probe/agent_pids.json",
+            "--sentinel", "artifacts/probe/agent_done.json",
+            "--block", "probe: needs a human decision",
+            "--gralph", "bin/gralph-uut.exe",
+            "--lifetime", "1", "--children", "2", "{{prompt}}"]
+  timeout: 300s
+
+prompt: |
+  probe session -- the fake agent ignores this.
+
+fail_threshold: 99
+lua_timeout: 30s
+
+commands:
+  - name: needs-human
+    guidance: |
+      Probe stage that can never be satisfied by the agent.
+      RUN: gralph block "<reason>"
+    lua: scripts/probe_pass.lua

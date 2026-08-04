@@ -1,0 +1,23 @@
+# Probe profile: an agent that never exits on its own.
+# Used by proof_zombie.py for the sigint_double and terminate_gralph paths, where the
+# agent must still be mid-turn (with its children alive) at the moment gralph is stopped.
+# HARNESS-OWNED: hashed in probe_manifest.json. Editing it changes what the proof means.
+
+agent:
+  command: ["python", "scripts/fake_agent.py", "--mode", "hang",
+            "--pidfile", "artifacts/probe/agent_pids.json",
+            "--children", "2", "{{prompt}}"]
+  timeout: 300s
+
+prompt: |
+  probe session -- the fake agent ignores this.
+
+fail_threshold: 99
+lua_timeout: 30s
+
+commands:
+  - name: spin
+    guidance: |
+      Probe stage. The fake agent never runs a gralph command; this node exists only
+      so the loop has a cursor to sit on while the probe terminates it.
+    lua: scripts/probe_pass.lua

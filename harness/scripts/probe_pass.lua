@@ -1,0 +1,4 @@
+-- Always-pass gate used ONLY by the probe profiles (probe-complete.yaml).
+-- The lifecycle proofs need a cursor that actually advances; what the gate checks is
+-- irrelevant to them, so this deliberately verifies nothing.
+-- It is never referenced by lifecycle.yaml.

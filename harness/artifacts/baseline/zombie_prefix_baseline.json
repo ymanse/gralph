@@ -1,0 +1,169 @@
+{
+  "proof_source": "live-pid-snapshot",
+  "os": "windows",
+  "uut_binary": "bin/gralph-uut.exe",
+  "control_binary": "bin/gralph-orch.exe",
+  "uut_paths_tested": 3,
+  "control_paths_tested": 3,
+  "descendants_spawned_min": 3,
+  "survivors": [
+    {
+      "pid": 40288,
+      "image": "python.exe"
+    },
+    {
+      "pid": 73364,
+      "image": "python.exe"
+    },
+    {
+      "pid": 64288,
+      "image": "python.exe"
+    },
+    {
+      "pid": 9164,
+      "image": "python.exe"
+    },
+    {
+      "pid": 66876,
+      "image": "python.exe"
+    },
+    {
+      "pid": 58128,
+      "image": "python.exe"
+    },
+    {
+      "pid": 10636,
+      "image": "python.exe"
+    }
+  ],
+  "control_survivors_total": 7,
+  "control_leaked": true,
+  "uut": [
+    {
+      "path": "agent_timeout",
+      "profile": "probe-timeout.yaml",
+      "descendants_spawned": 3,
+      "survivors": [
+        {
+          "pid": 40288,
+          "image": "python.exe"
+        },
+        {
+          "pid": 73364,
+          "image": "python.exe"
+        }
+      ],
+      "supported": true,
+      "note": "",
+      "gralph_exit_code": null
+    },
+    {
+      "path": "sigint_double",
+      "profile": "probe-hang.yaml",
+      "descendants_spawned": 3,
+      "survivors": [
+        {
+          "pid": 64288,
+          "image": "python.exe"
+        },
+        {
+          "pid": 9164,
+          "image": "python.exe"
+        }
+      ],
+      "supported": true,
+      "note": "",
+      "gralph_exit_code": 1
+    },
+    {
+      "path": "terminate_gralph",
+      "profile": "probe-hang.yaml",
+      "descendants_spawned": 3,
+      "survivors": [
+        {
+          "pid": 66876,
+          "image": "python.exe"
+        },
+        {
+          "pid": 58128,
+          "image": "python.exe"
+        },
+        {
+          "pid": 10636,
+          "image": "python.exe"
+        }
+      ],
+      "supported": true,
+      "note": "",
+      "gralph_exit_code": 1
+    },
+    {
+      "path": "graceful_stop",
+      "profile": "probe-hang.yaml",
+      "descendants_spawned": 0,
+      "survivors": [],
+      "supported": false,
+      "note": "binary has no `stop` subcommand (pre-fix)"
+    }
+  ],
+  "control": [
+    {
+      "path": "agent_timeout",
+      "profile": "probe-timeout.yaml",
+      "descendants_spawned": 3,
+      "survivors": [
+        {
+          "pid": 65912,
+          "image": "python.exe"
+        },
+        {
+          "pid": 71436,
+          "image": "python.exe"
+        }
+      ],
+      "supported": true,
+      "note": "",
+      "gralph_exit_code": null
+    },
+    {
+      "path": "sigint_double",
+      "profile": "probe-hang.yaml",
+      "descendants_spawned": 3,
+      "survivors": [
+        {
+          "pid": 71076,
+          "image": "python.exe"
+        },
+        {
+          "pid": 41416,
+          "image": "python.exe"
+        }
+      ],
+      "supported": true,
+      "note": "",
+      "gralph_exit_code": 1
+    },
+    {
+      "path": "terminate_gralph",
+      "profile": "probe-hang.yaml",
+      "descendants_spawned": 3,
+      "survivors": [
+        {
+          "pid": 17688,
+          "image": "python.exe"
+        },
+        {
+          "pid": 72900,
+          "image": "python.exe"
+        },
+        {
+          "pid": 70948,
+          "image": "python.exe"
+        }
+      ],
+      "supported": true,
+      "note": "",
+      "gralph_exit_code": 1
+    }
+  ]
+}
