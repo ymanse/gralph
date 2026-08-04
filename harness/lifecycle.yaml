@@ -20,8 +20,13 @@ agent:
             "--add-dir", "D:/dev_ext/gralph"]
   timeout: 45m
 
+# NOTE: this text is the agent's USER PROMPT, so it is what keyword hooks match on.
+# It deliberately does NOT contain the phrase "ralph loop": OMC's magic-keyword hook
+# fires on the substring, activates its own ralph/ultrawork mode, and every session
+# then burns turns tearing that state back down. gralph drives the loop here; nothing
+# else should think it does.
 prompt: |
-  You are running inside a gralph (ralph loop) session.
+  You are running inside a gralph orchestrator session.
   1. Run "bin/gralph-orch.exe next" to receive the gralph command you must eventually run,
      along with any context about it.
   2. Do whatever is necessary to be able to run that command, then run it with its arguments.
