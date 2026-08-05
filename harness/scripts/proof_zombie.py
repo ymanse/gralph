@@ -136,6 +136,20 @@ def run_path(binary, path, wait_s):
         # runs AFTER survivors were recorded, so it cannot hide a leak.
         for s in rec["survivors"]:
             proc.kill_tree(s["pid"])
+        # ...and the recorded set is not the whole story on the CONTROL binary: after
+        # its agent is timed out, gralph retries and spawns a FRESH agent, which orphans
+        # another batch that was never in `survivors`. Re-read the pidfile (the newest
+        # agent overwrote it) and reap that tree too, or every control run dribbles a
+        # couple of sleepers onto the machine -- which is a poor look for a harness whose
+        # entire subject is leaked processes.
+        try:
+            with open(PIDFILE, encoding="utf-8") as f:
+                last = json.load(f)
+            for pid in [last.get("agent")] + list(last.get("children") or []):
+                if pid:
+                    proc.kill_tree(int(pid))
+        except (OSError, ValueError):
+            pass
         clean_instance(instance)
 
 
