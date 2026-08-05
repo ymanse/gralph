@@ -164,14 +164,20 @@ def sweep_stand_ins():
     CONTROL binary gralph keeps retrying and can orphan an intermediate batch that is in
     neither set. Those children exit on their own after 900s, so this is tidiness rather
     than a leak -- but a harness whose whole subject is stray processes should not leave
-    any. Matching is on the stand-in's own `time.sleep(900)` marker, never on an image
-    name, so another harness's python is untouched.
+    any. Matching is on the stand-in's own `time.sleep(900)` marker plus a python image
+    name, never on an image name alone, so another harness's python is untouched.
+
+    Both halves of that filter are load-bearing. The marker alone matches the QUERY
+    itself -- a shell whose command line contains the marker string -- so a naive scan
+    over-counts and would try to kill the process producing its own input. Only a python
+    image can be a stand-in child.
     """
     try:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
              "Get-CimInstance Win32_Process | "
-             "Where-Object { $_.CommandLine -like '*time.sleep(900)*' } | "
+             "Where-Object { $_.Name -like 'python*' -and "
+             "$_.CommandLine -like '*time.sleep(900)*' } | "
              "ForEach-Object { $_.ProcessId }"],
             capture_output=True, text=True, timeout=120).stdout
     except (subprocess.SubprocessError, OSError):

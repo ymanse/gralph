@@ -18,7 +18,7 @@
     "scripts/probe_manifest.py": "9015bf37dfb206665346b0defb64b22a73647f4cce30bd0d40e9918fff990dfe",
     "scripts/proc.py": "8ceece082c8451e6518d68ea0f437d19d384df615002a0d7e9374d4498353459",
     "scripts/proof_shutdown.py": "4671e9ba60d8d0d75bc8e9e6ecd7b909dc7aede32de6e79850ad9028a28cb57d",
-    "scripts/proof_zombie.py": "cc67946ddb7d10fa9fec9e575975003c8eaca9ab4f51468606ec4a596b23ce2a",
+    "scripts/proof_zombie.py": "1f6b9c37d177d0d6c773c0a6b8e951c4a15f4e4015199a89791e23867c58b5ab",
     "scripts/scan_lifecycle.py": "a694262aab860c9813123c7603e89b1f8b5fcc0ebbb83b66d8cf9485c3010805",
     "scripts/sha256_of.py": "ac0d52fb1a945e7d60368d8d3f3d5b2878c7c1f815d941988d1cdfd3dfa063e5",
     "scripts/shutdown_proof.lua": "c8f335cee90f95ed30210d3d65583744d02e66228bcb7b18bef470e6a9d1c6ad",
