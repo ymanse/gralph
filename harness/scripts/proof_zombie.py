@@ -157,6 +157,33 @@ def run_binary(binary, paths, wait_s):
     return [run_path(binary, p, wait_s) for p in paths]
 
 
+def sweep_stand_ins():
+    """Final sweep for this probe's stand-in children, by their unique command line.
+
+    Per-path cleanup reaps the recorded survivors and the last agent's tree, but on the
+    CONTROL binary gralph keeps retrying and can orphan an intermediate batch that is in
+    neither set. Those children exit on their own after 900s, so this is tidiness rather
+    than a leak -- but a harness whose whole subject is stray processes should not leave
+    any. Matching is on the stand-in's own `time.sleep(900)` marker, never on an image
+    name, so another harness's python is untouched.
+    """
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process | "
+             "Where-Object { $_.CommandLine -like '*time.sleep(900)*' } | "
+             "ForEach-Object { $_.ProcessId }"],
+            capture_output=True, text=True, timeout=120).stdout
+    except (subprocess.SubprocessError, OSError):
+        return 0
+    n = 0
+    for line in out.split():
+        if line.strip().isdigit():
+            proc.kill_tree(int(line))
+            n += 1
+    return n
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--uut", default="bin/gralph-uut.exe")
@@ -180,6 +207,8 @@ def main() -> int:
 
     uut_recs = run_binary(uut, uut_paths, a.wait)
     ctl_recs = run_binary(ctl, ctl_paths, a.wait)
+    # After every measurement is recorded -- so it can never hide a leak.
+    swept = sweep_stand_ins()
 
     uut_live = [r for r in uut_recs if r["supported"]]
     spawned = [r["descendants_spawned"] for r in uut_live]
@@ -206,7 +235,7 @@ def main() -> int:
         json.dump(out, f, indent=2)
 
     print(f"uut_paths={len(uut_live)} spawned_min={out['descendants_spawned_min']} "
-          f"survivors={len(all_surv)} control_survivors={ctl_surv}")
+          f"survivors={len(all_surv)} control_survivors={ctl_surv} swept={swept}")
     return 0
 
 
