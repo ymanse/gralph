@@ -100,12 +100,10 @@ func runGALPSubprocess(args []string) int {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()
-	cmd.Cancel = func() error {
-		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			return cmd.Process.Kill()
-		}
-		return nil
-	}
+	// Agent timeout and host cancellation both land here. The agent is usually
+	// a shell that spawned the real work, so killing the agent alone orphans
+	// its children -- kill the tree.
+	cmd.Cancel = func() error { return killTree(cmd.Process) }
 	cmd.WaitDelay = agentKillGrace
 
 	err := cmd.Run()

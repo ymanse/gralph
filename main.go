@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -17,7 +18,12 @@ const usage = `gralph - ralph loop orchestrator
 Usage:
   gralph run <profile.yaml> [--name <instance>] [--max-iterations N]
                                                     run the ralph loop (orchestrator)
+  gralph stop <profile.yaml> [--name <instance>] [--now]
+                                                    ask a running loop to stop: after the
+                                                    turn in flight finishes, or --now
   gralph next [--profile <profile.yaml>]            (agent) get current task guidance
+  gralph block "<reason>" [--profile p]             (agent) this stage needs a human:
+                                                    the loop stops respawning it, exit 3
   gralph do <command> [--profile p] [--arg v ...]   (agent) run a YAML-defined custom command
   gralph status [--profile p] [--json]              show cursor, session, failures, quota progress
   gralph reset [--profile p] [--force] [--failures] reset the state dir (--failures: counters only)
@@ -60,13 +66,63 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
-		// SIGINT/SIGTERM cancel the context; the loop forwards the signal to
-		// the running agent, reports the preserved cursor and exits.
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
+		// Join a kill-on-close job object before anything is spawned, so the
+		// whole tree dies with gralph even under TerminateProcess (Windows;
+		// a no-op elsewhere). Fail open: a run that cannot be supervised is
+		// still a usable run.
+		if err := superviseTree(); err != nil {
+			fmt.Fprintln(os.Stderr, "[gralph] warning: process tree supervision unavailable:", err)
+		}
+		// The two stop tiers of spec/shutdown-contract.md: the first interrupt
+		// records a graceful stop intent -- the agent session in flight runs to
+		// completion and its gate commits -- and the second force-stops.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		sig := make(chan os.Signal, 2)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sig
+			fmt.Fprintln(os.Stderr, "[gralph] stop requested: the turn in flight will finish first (interrupt again to force-stop)")
+			if err := requestStop(p.StateDir, false); err != nil {
+				fmt.Fprintln(os.Stderr, "[gralph] could not record the stop intent:", err)
+			}
+			<-sig
+			forceStop(p.StateDir)
+		}()
 		if err := runLoop(ctx, p, maxIter); err != nil {
+			// blocked is the third exit of the shutdown contract: not DONE, not
+			// stopped, not failed. runLoop already said what to act on.
+			if errors.Is(err, errBlocked) {
+				os.Exit(3)
+			}
 			fatal(err)
 		}
+
+	case "stop":
+		profilePath, instance, now, err := parseStopArgs(os.Args[2:])
+		if err != nil {
+			fatal(err)
+		}
+		// An operator command like `run`: only an explicit --name, never the
+		// $GRALPH_INSTANCE_NAME the orchestrator exports into agent sessions.
+		p, err := LoadProfileAs(profilePath, instance)
+		if err != nil {
+			fatal(err)
+		}
+		if err := requestStop(p.StateDir, now); err != nil {
+			fatal(err)
+		}
+		when := "once the turn in flight finishes"
+		if now {
+			when = "immediately"
+		}
+		fmt.Fprintf(os.Stderr, "[gralph] instance %q: stop recorded in %s; a running loop stops %s\n",
+			p.Name, p.StateDir, when)
+
+	case "block":
+		// A session subcommand like `next`/`do`: it runs inside the agent turn,
+		// so it takes the profile from the environment unless told otherwise.
+		runBlock(os.Args[2:])
 
 	case "graph":
 		fs := flag.NewFlagSet("graph", flag.ExitOnError)

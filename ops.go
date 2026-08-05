@@ -140,7 +140,9 @@ func resetStateDir(stateDir string, failuresOnly bool) error {
 			st.Failures = map[string]int{}
 			return st.Save(stateDir)
 		}
-		for _, path := range []string{statePath(stateDir), storePath(stateDir), progressPath(stateDir)} {
+		// blocked.json goes with them: a reset that left it behind would hand
+		// back a fresh flow that exits 3 before its first iteration.
+		for _, path := range []string{statePath(stateDir), storePath(stateDir), progressPath(stateDir), blockPath(stateDir)} {
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 				return err
 			}

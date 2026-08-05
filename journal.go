@@ -29,6 +29,8 @@ const (
 	EvSubitemRecorded  = "subitem_recorded"  // one fork/join work item committed
 	EvRateLimited      = "rate_limited"      // launcher reported a quota wait
 	EvLoopDone         = "loop_done"         // cursor reached DONE
+	EvLoopStopped      = "loop_stopped"      // a human asked the loop to stop
+	EvLoopBlocked      = "loop_blocked"      // the agent blocked: a human must act
 )
 
 // JournalEvent is one journal.jsonl line. Only the fields relevant to the

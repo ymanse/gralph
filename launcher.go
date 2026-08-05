@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -227,13 +226,10 @@ func runLauncher(ctx context.Context, p *Profile, launcherArgv, agentArgv []stri
 		"GRALPH_PROFILE="+p.Path,
 		"GRALPH_INSTANCE_NAME="+p.Name,
 	)
-	cmd.Cancel = func() error {
-		// Graceful first; WaitDelay hard-kills if the process lingers.
-		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			return cmd.Process.Kill()
-		}
-		return nil
-	}
+	// The launcher is a process hop: whatever it spawned (agent, and whatever
+	// the agent spawned) has to go with it, or cancelling the host leaves the
+	// agent running. WaitDelay still hard-kills the launcher if it lingers.
+	cmd.Cancel = func() error { return killTree(cmd.Process) }
 	cmd.WaitDelay = agentKillGrace
 
 	runErr := cmd.Run()

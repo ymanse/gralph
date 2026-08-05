@@ -44,6 +44,15 @@ func runLoop(ctx context.Context, p *Profile, maxIterations int) error {
 		return fmt.Errorf("profile: agent.command is required to run the loop")
 	}
 
+	// One driver per instance. Taken before anything in the state dir is read
+	// or written, so a run that loses the lock leaves the instance byte-for-byte
+	// as it found it -- not a half-rotated session id, not a moved cursor.
+	unlock, err := acquireRunLock(p.StateDir, p.Name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	// State the instance up front: a mistyped --name silently lands on an
 	// empty state dir, and "starting a fresh flow" is the only visible
 	// difference from resuming the one the user meant.
@@ -52,6 +61,15 @@ func runLoop(ctx context.Context, p *Profile, maxIterations int) error {
 	} else {
 		fmt.Fprintf(os.Stderr, "[gralph] instance %q: resuming from %s\n", p.Name, p.StateDir)
 	}
+
+	// A stop intent left behind by a previous run is not an instruction to this
+	// one, so it is cleared before anything can observe it. The `--now` tier
+	// cannot wait for the iteration boundary the graceful one is defined at, so
+	// it gets a watcher that lives exactly as long as the loop.
+	clearStop(p.StateDir)
+	watchCtx, stopWatching := context.WithCancel(ctx)
+	defer stopWatching()
+	go watchStopNow(watchCtx, p.StateDir)
 
 	consecutiveFailures := 0
 	for i := 1; ; i++ {
@@ -71,6 +89,24 @@ func runLoop(ctx context.Context, p *Profile, maxIterations int) error {
 		}
 		if ctx.Err() != nil {
 			return interrupted(i, cursor)
+		}
+		// The graceful stop is honoured HERE and nowhere else: the stage before
+		// this one is committed and nothing is in flight, so stopping costs no
+		// work. A human asking the loop to stop is not a failure -- exit 0.
+		if requested, _ := stopRequested(p.StateDir); requested {
+			clearStop(p.StateDir)
+			fmt.Fprintf(os.Stderr, "[gralph] stopped cleanly at %s\n", cursor)
+			appendJournal(p.StateDir, JournalEvent{Event: EvLoopStopped, Cursor: cursor, Iteration: i - 1})
+			return nil
+		}
+		// Same boundary, terminal outcome: an agent that ran `gralph block` said
+		// this stage needs a human, so respawning it is exactly the waste F5
+		// exists to stop. The record is left on disk for whoever has to act.
+		if blocked, reason := blockedOn(p.StateDir); blocked {
+			fmt.Fprintf(os.Stderr, "[gralph] blocked at %s: %s\n", cursor, reason)
+			fmt.Fprintf(os.Stderr, "[gralph] not respawning; remove %s once a human has acted\n", blockPath(p.StateDir))
+			appendJournal(p.StateDir, JournalEvent{Event: EvLoopBlocked, Cursor: cursor, Iteration: i - 1, Reason: reason})
+			return errBlocked
 		}
 
 		// New session: rotate id, reset per-command failure counters.

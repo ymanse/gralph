@@ -17,9 +17,31 @@ GRALPH="${GRALPH:-./bin/gralph-orch.exe}"
 [ -x "$GRALPH" ] || { echo "orchestrator missing: $GRALPH"; exit 127; }
 
 # Nested `claude -p` sessions refuse to start when CLAUDECODE is inherited from a parent
-# Claude Code session; Korean Windows (cp949) needs PYTHONUTF8 for subprocess output.
+# Claude Code session.
 unset CLAUDECODE
-export PYTHONUTF8=1
+
+# PYTHONUTF8 must stay OFF, and this is not cosmetic. UTF-8 mode makes
+# locale.getpreferredencoding(False) return utf-8, and that is what `subprocess`
+# text pipes decode child output with -- but Windows console tools emit the OEM
+# codepage (cp949 here), not UTF-8. So proc.py's `tasklist` read dies with
+# UnicodeDecodeError on the Korean "no matching task" banner, which tasklist
+# prints exactly when a PID is GONE. The probe therefore crashed only in the
+# PASSING case, and reported it as an AttributeError deep in subprocess.
+# Nothing here needs UTF-8 mode: every harness script passes encoding= to open()
+# or reads binary, and the Go toolchain's output is ASCII.
+export PYTHONUTF8=0
+
+# NoDefaultCurrentDirectoryInExePath is set to 1 machine-wide here, and it breaks the
+# lifecycle probes the same way PYTHONUTF8 did -- only on the path that would have
+# PASSED. It tells CreateProcess to drop the current directory from the search it does
+# when lpApplicationName is NULL, which is exactly how python's subprocess spawns a
+# list argv. So fake_agent.py's `subprocess.run(["bin/gralph-uut.exe", "do", ...])`
+# dies with WinError 2 before it can advance the cursor or call `gralph block`, and the
+# proof records agent_completed=false / blocked_exit_code=1 against gralph for a process
+# gralph never got to see. Measured: identical argv resolves rc=0 with the variable
+# absent from the CALLING process -- the child's copy is irrelevant, the caller's is
+# what CreateProcess reads. Unset (not =0): any value at all enables the behaviour.
+unset NoDefaultCurrentDirectoryInExePath
 
 PROFILE="${PROFILE:-lifecycle.yaml}"
 DIR="${DIR:-.gralph/lifecycle}"
